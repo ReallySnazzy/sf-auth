@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8">
+    <meta http-equiv="X-UA-Compatible" content="IE=edge">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Snazzy Fellas Login</title>
+    <link rel="stylesheet" type="text/css" href="https://cdnjs.cloudflare.com/ajax/libs/normalize/8.0.1/normalize.min.css" />
+    <link rel="stylesheet" type="text/css" href="/static/styles.css" />
+    <script defer src="https://cdn.jsdelivr.net/npm/alpinejs@3.x.x/dist/cdn.min.js"></script>
+  </head>
+  <body x-data="">
+    <form method="POST" action="login" x-ref="loginForm">
+      <input type="hidden" name="username" x-ref="username" />
+      <input type="hidden" name="password" x-ref="password" />
+      <input type="hidden" name="redirect_uri" value="{{ redirect_uri }}" />
+      <input type="hidden" name="client_id" value="{{ client_id }}" />
+    </form>
+    <div class="login-center">
+      <span class="login-title">Snazzy Fellas</span>
+      <div class="login-card">
+        <span class="login-label">Login</span>
+        <input 
+          type="text" 
+          class="login-text-input" 
+          placeholder="Username" 
+          x-on:change="$refs.username.value = $event.target.value" 
+        />
+        <input 
+          type="password" 
+          class="login-text-input" 
+          placeholder="Password" 
+          x-on:change="$refs.password.value = $event.target.value" 
+        />
+        <div>
+          <input 
+            type="submit" 
+            class="login-button login-button-primary" 
+            value="Login"
+            x-on:click="$refs.loginForm.submit()"
+          >
+          <a 
+            x-on:click="alert('TODO: Implement forgot password')" 
+            href="#" 
+            class="login-button login-button-secondary"
+          >
+            Forgot
+          </a>
+        </div>
+      </div>
+    </div>
+  </body>
+</html>

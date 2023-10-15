@@ -1,0 +1,92 @@
+@import url('https://fonts.googleapis.com/css2?family=Gentium+Book+Plus:ital,wght@0,400;0,700;1,400;1,700&family=Open+Sans:ital,wght@0,300;0,400;0,500;0,600;0,700;0,800;1,300;1,400;1,500;1,600;1,700;1,800&display=swap');
+
+html,
+body {
+  margin: 0;
+  padding: 0;
+}
+
+body {
+  background-color: rgb(30, 30, 30);
+  font: 14pt 'Open Sans', sans-serif;
+}
+
+* {
+  margin-block: 0;
+}
+
+.login-center {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  width: 100vw;
+  height: 100vh;
+  flex-direction: column;
+}
+
+.login-text-input {
+  display: block;
+  border: 1px solid black;
+  padding: 0.5em 0.2em;
+  font-size: 1rem;
+  margin: 0.5rem 0;
+  background: hsl(299, 15%, 90%);
+}
+
+.login-text-input:focus {
+  outline: 0;
+  background: hsl(299, 25%, 95%);
+}
+
+.login-text-input::placeholder {
+  color: hsl(0, 0%, 30%);
+}
+
+.login-card {
+  background: white;
+  overflow: hidden;
+  padding: 0.7rem;
+  width: 380px;
+  display: flex;
+  flex-direction: column;
+}
+
+@media(max-width: 380px) {
+  .login-card {
+    width: calc(100vw - 2rem);
+  }
+}
+
+.login-title {
+  display: block;
+  text-align: center;
+  margin: 0 0 0.5em 0;
+  color: hsl(299, 50%, 59%);
+  font: bold 18pt 'Gentium Book Plus', serif;
+}
+
+.login-label {
+  display: block;
+  font: bold 28pt 'Gentium Book Plus', serif;
+  margin: 0;
+  padding: 0;
+}
+
+.login-button {
+  display: inline-block;
+  padding: 0.4rem 0.6rem;
+  font: bold 14pt "Open Sans", sans-serif;
+  border: 0;
+  cursor: pointer;
+  margin: 0.5rem 0 0 0;
+}
+
+.login-button-primary {
+  background: hsl(299, 50%, 40%);
+  color: hsl(0, 0%, 96%);
+}
+
+.login-button-secondary {
+  color: hsl(299, 50%, 40%);
+  background: rgba(0, 0, 0, 0);
+}
