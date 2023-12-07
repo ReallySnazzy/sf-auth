@@ -1,2 +1,4 @@
+pub mod admin;
 pub mod auth;
-pub mod permissions;
+//pub mod permissions;
+

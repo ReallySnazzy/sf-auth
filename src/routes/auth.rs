@@ -1,17 +1,14 @@
-use axum::{extract, headers, http, response, TypedHeader};
+use actix_web::{http::header, web, HttpRequest, HttpResponse, Responder};
 use hmac::{Hmac, Mac};
 use jwt::SignWithKey;
 use rand::Rng;
 use sha2::Sha256;
-use std::{
-    collections::{BTreeMap, HashMap},
-    sync::Arc,
-};
-use tracing::warn;
+use std::collections::{BTreeMap, HashMap};
+use tracing::{info, warn};
 
 use crate::{password, types};
 
-pub async fn auth(request: extract::Query<types::AuthRequest>) -> types::AuthTemplate {
+pub async fn auth(request: web::Query<types::AuthRequest>) -> impl Responder {
     return types::AuthTemplate {
         redirect_uri: request.redirect_uri.clone(),
         client_id: request.client_id.clone(),
@@ -19,9 +16,9 @@ pub async fn auth(request: extract::Query<types::AuthRequest>) -> types::AuthTem
 }
 
 pub async fn login(
-    request: extract::Query<types::LoginRequest>,
-    state: extract::State<Arc<types::AppState>>,
-) -> response::Redirect {
+    request: web::Query<types::LoginRequest>,
+    state: web::Data<types::AppState>,
+) -> impl Responder {
     // TODO Encode query params
     let invalid_password_uri = format!(
         "/auth?client_id={}&redirect_uri={}&invalid_creds=1",
@@ -33,16 +30,16 @@ pub async fn login(
     );
     let user = match state.database.user_by_username(&request.username).await {
         Some(u) => u,
-        None => return response::Redirect::temporary(&invalid_password_uri),
+        None => return web::Redirect::to(invalid_password_uri),
     };
     if !password::check_password(&user.password_hash, &request.password) {
-        return response::Redirect::temporary(&invalid_password_uri);
+        return web::Redirect::to(invalid_password_uri);
     }
     let client_id = match bson::Uuid::parse_str(&request.client_id) {
         Ok(u) => u,
         Err(e) => {
             warn!("Failed to parse client id({}): {}", request.client_id, e);
-            return response::Redirect::temporary(&invalid_config_uri);
+            return web::Redirect::to(invalid_config_uri);
         }
     };
     let app = match state.database.app_by_client_id(client_id).await {
@@ -52,7 +49,7 @@ pub async fn login(
                 "Failed to find application for client id {}",
                 client_id.to_string()
             );
-            return response::Redirect::temporary(&invalid_config_uri);
+            return web::Redirect::to(invalid_config_uri);
         }
     };
     if !app.redirect_uris.contains(&request.redirect_uri) {
@@ -60,7 +57,7 @@ pub async fn login(
             "Failed to find application for client id {}",
             client_id.to_string()
         );
-        return response::Redirect::temporary(&invalid_config_uri);
+        return web::Redirect::to(invalid_config_uri);
     }
     // TODO: Support state parameter
     // TODO Make application grants expire
@@ -72,9 +69,9 @@ pub async fn login(
     };
     if let Err(e) = state.database.insert_application_grant(&grant).await {
         warn!("Failed to insert application grant: {}", e);
-        return response::Redirect::temporary(&invalid_config_uri);
+        return web::Redirect::to(invalid_config_uri);
     }
-    response::Redirect::temporary(&format!("{}?code={}", &request.redirect_uri, &grant.code))
+    web::Redirect::to(format!("{}?code={}", &request.redirect_uri, &grant.code))
 }
 
 fn generate_random_code(len: usize) -> String {
@@ -98,39 +95,29 @@ fn error_hash_map(message: &str) -> HashMap<String, String> {
 }
 
 pub async fn token(
-    request: extract::Query<types::TokenRequest>,
-    state: extract::State<Arc<types::AppState>>,
-) -> Result<
-    response::Json<types::TokenResponse>,
-    (http::StatusCode, response::Json<HashMap<String, String>>),
-> {
+    request: web::Query<types::TokenRequest>,
+    state: web::Data<types::AppState>,
+) -> HttpResponse {
     let grant = match state.database.get_application_grant(&request.code).await {
         Ok(g) => g,
         Err(e) => {
             warn!("Failed to get application grant: {}", e);
-            return Err((
-                http::StatusCode::INTERNAL_SERVER_ERROR,
-                response::Json(error_hash_map("Database error")),
-            ));
+            return HttpResponse::InternalServerError()
+                .body("Failed to retrieve application info from database");
         }
     };
     let grant = match grant {
         Some(g) => g,
         None => {
-            return Err((
-                http::StatusCode::BAD_REQUEST,
-                response::Json(error_hash_map("Invalid grant")),
-            ));
+            info!("Non existant grant requested");
+            return HttpResponse::BadRequest().body("No such grant");
         }
     };
     let jwt_key: Hmac<Sha256> = match Hmac::new_from_slice(state.config.jwt_secret.as_bytes()) {
         Ok(k) => k,
         Err(e) => {
             warn!("Failed to create hmac key: {}", e);
-            return Err((
-                http::StatusCode::BAD_REQUEST,
-                response::Json(error_hash_map("Failed to sign JWT")),
-            ));
+            return HttpResponse::InternalServerError().body("Crypto failed");
         }
     };
     let mut claims = BTreeMap::new();
@@ -145,10 +132,7 @@ pub async fn token(
         Ok(id) => id,
         Err(e) => {
             warn!("Failed to sign JWT: {}", e);
-            return Err((
-                http::StatusCode::BAD_REQUEST,
-                response::Json(error_hash_map("Failed to sign JWT")),
-            ));
+            return HttpResponse::InternalServerError().body("Failed to sign JWT");
         }
     };
     // TODO Make expiration actually do something
@@ -163,13 +147,10 @@ pub async fn token(
         Ok(_) => (),
         Err(e) => {
             warn!("Failed to save session: {}", e);
-            return Err((
-                http::StatusCode::INTERNAL_SERVER_ERROR,
-                response::Json(error_hash_map("Failed to save session to database")),
-            ));
+            return HttpResponse::InternalServerError().body("Failed to save session to database");
         }
     };
-    return Ok(response::Json(types::TokenResponse {
+    return HttpResponse::Ok().json(web::Json(types::TokenResponse {
         token_type: "Bearer".to_owned(),
         expires_in: session.expires, // 1 month
         access_token: session.session_key,
@@ -177,24 +158,35 @@ pub async fn token(
     }));
 }
 
-pub async fn user_info(
-    auth_header: TypedHeader<headers::Authorization<headers::authorization::Bearer>>,
-    state: extract::State<Arc<types::AppState>>,
-) -> Result<
-    response::Json<types::UserInfoResponse>,
-    (http::StatusCode, response::Json<HashMap<String, String>>),
-> {
-    let bearer = auth_header.token().clone();
+pub async fn user_info(req: HttpRequest, state: web::Data<types::AppState>) -> HttpResponse {
+    let auth_header = match req.headers().get(header::AUTHORIZATION) {
+        None => {
+            return HttpResponse::BadRequest().body("Missing authorization header");
+        }
+        Some(a) => a,
+    };
+    let auth_header = match auth_header.to_str() {
+        Err(e) => {
+            info!("User sent invalid authorization header: {}", e);
+            return HttpResponse::InternalServerError()
+                .body("Failed to parse authorization header");
+        }
+        Ok(h) => h,
+    };
+    let bearer = match auth_header.split(" ").collect::<Vec<&str>>()[..] {
+        ["Bearer", x, ..] => x,
+        _ => {
+            return HttpResponse::BadRequest().body("Invalid authorization header");
+        }
+    };
     let session = match state.database.session_from_key(bearer).await {
         Some(s) => s,
         None => {
-            return Err((
-                http::StatusCode::UNAUTHORIZED,
-                response::Json(error_hash_map("Invalid session")),
-            ));
+            return HttpResponse::Unauthorized().body("Invalid session");
         }
     };
-    return Ok(response::Json(types::UserInfoResponse {
+    HttpResponse::Ok().json(types::UserInfoResponse {
         sub: session.user_id.to_string(),
-    }));
+    })
 }
+

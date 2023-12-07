@@ -40,6 +40,10 @@ pub struct AuthTemplate {
     pub client_id: String,
 }
 
+#[derive(Template)]
+#[template(path = "admin.html")]
+pub struct AdminPanelTemplate {}
+
 pub struct AppState {
     pub database: Database,
     pub config: Config,
@@ -83,9 +87,11 @@ pub struct Config {
     pub mongodb_uri: String,
     pub jwt_secret: String,
     pub listen_address: String,
+    pub admin_panel_enabled: bool,
 }
 
 #[derive(Serialize)]
 pub struct UserInfoResponse {
     pub sub: String,
 }
+
