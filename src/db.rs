@@ -17,26 +17,15 @@ impl Database {
         Database { mongo: client }
     }
 
-    pub async fn user_by_id(&self, id: bson::Uuid) -> Option<types::DbUser> {
-        let collection = self
-            .mongo
-            .database(AUTH_DATABASE_NAME)
-            .collection::<types::DbUser>(COLLECTION_NAME_USERS);
-        return match collection.find_one(doc! { "_id": id }, None).await {
-            Ok(s) => s,
-            Err(e) => {
-                warn!("Failed to retrieve user document {}", e);
-                None
-            }
-        };
-    }
-
     pub async fn user_by_username(&self, username: &str) -> Option<types::DbUser> {
         let collection = self
             .mongo
             .database(AUTH_DATABASE_NAME)
             .collection::<types::DbUser>(COLLECTION_NAME_USERS);
-        return match collection.find_one(doc! { username: username }, None).await {
+        return match collection
+            .find_one(doc! { "username": username }, None)
+            .await
+        {
             Ok(s) => s,
             Err(e) => {
                 warn!("Failed to retrieve user document {}", e);
@@ -45,12 +34,24 @@ impl Database {
         };
     }
 
-    pub async fn app_by_client_id(&self, client_id: bson::Uuid) -> Option<types::DbApplication> {
+    pub async fn insert_user(
+        &self,
+        user: &types::DbUser,
+    ) -> Result<(), Box<dyn std::error::Error>> {
+        let collection = self
+            .mongo
+            .database(AUTH_DATABASE_NAME)
+            .collection::<types::DbUser>(COLLECTION_NAME_USERS);
+        collection.insert_one(user, None).await?;
+        Ok(())
+    }
+
+    pub async fn app_by_name(&self, name: &str) -> Option<types::DbApplication> {
         let collection = self
             .mongo
             .database(AUTH_DATABASE_NAME)
             .collection::<types::DbApplication>(COLLECTION_NAME_APPS);
-        return match collection.find_one(doc! { "_id": client_id }, None).await {
+        return match collection.find_one(doc! { "name": name }, None).await {
             Ok(s) => s,
             Err(e) => {
                 warn!("Failed to retrieve application document {}", e);
@@ -76,7 +77,7 @@ impl Database {
             .mongo
             .database(AUTH_DATABASE_NAME)
             .collection::<types::DbSession>(COLLECTION_NAME_SESSIONS);
-        let session = match collection.find_one(doc! { "key": key }, None).await {
+        let session = match collection.find_one(doc! { "session_key": key }, None).await {
             Ok(s) => s,
             Err(e) => {
                 warn!("Failed to load session: {}", e);
@@ -84,6 +85,21 @@ impl Database {
             }
         };
         return session;
+    }
+
+    pub async fn insert_application(
+        &self,
+        application: &types::DbApplication,
+    ) -> Result<bson::oid::ObjectId, Box<dyn std::error::Error>> {
+        let collection = self
+            .mongo
+            .database(AUTH_DATABASE_NAME)
+            .collection::<types::DbApplication>(COLLECTION_NAME_APPS);
+        let result = collection.insert_one(application, None).await?;
+        result
+            .inserted_id
+            .as_object_id()
+            .ok_or(format!("Failed to get inserted application ID").into())
     }
 
     pub async fn insert_application_grant(
@@ -121,3 +137,4 @@ impl Database {
         Ok(collection.find_one(doc! { "code": &code}, None).await?)
     }
 }
+

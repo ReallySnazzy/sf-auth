@@ -28,14 +28,19 @@ async fn main() -> Result<(), Box<dyn std::error::Error>> {
                 config: config.clone(),
             }))
             .route("/", web::get().to(home_status))
-            .route("/admin", web::get().to(routes::admin::panel))
             .route("/auth", web::get().to(routes::auth::auth))
             .route("/login", web::post().to(routes::auth::login))
             .route("/token", web::post().to(routes::auth::token))
             .route("/userinfo", web::get().to(routes::auth::user_info))
+            .route("/admin", web::get().to(routes::admin::panel))
+            .route("/admin/user", web::post().to(routes::admin::create_user))
+            .route(
+                "/admin/application",
+                web::post().to(routes::admin::create_application),
+            )
             .service(actix_files::Files::new("/static", "static").show_files_listing())
     })
-    .bind(("0.0.0.0", 8080))?
+    .bind(("0.0.0.0", 9005))?
     .run()
     .await?;
     Ok(())

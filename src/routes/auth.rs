@@ -3,7 +3,7 @@ use hmac::{Hmac, Mac};
 use jwt::SignWithKey;
 use rand::Rng;
 use sha2::Sha256;
-use std::collections::{BTreeMap, HashMap};
+use std::collections::BTreeMap;
 use tracing::{info, warn};
 
 use crate::{password, types};
@@ -16,7 +16,7 @@ pub async fn auth(request: web::Query<types::AuthRequest>) -> impl Responder {
 }
 
 pub async fn login(
-    request: web::Query<types::LoginRequest>,
+    request: web::Form<types::LoginRequest>,
     state: web::Data<types::AppState>,
 ) -> impl Responder {
     // TODO Encode query params
@@ -30,48 +30,42 @@ pub async fn login(
     );
     let user = match state.database.user_by_username(&request.username).await {
         Some(u) => u,
-        None => return web::Redirect::to(invalid_password_uri),
-    };
-    if !password::check_password(&user.password_hash, &request.password) {
-        return web::Redirect::to(invalid_password_uri);
-    }
-    let client_id = match bson::Uuid::parse_str(&request.client_id) {
-        Ok(u) => u,
-        Err(e) => {
-            warn!("Failed to parse client id({}): {}", request.client_id, e);
-            return web::Redirect::to(invalid_config_uri);
+        None => {
+            info!("User tried to login as a user that does not exist");
+            return web::Redirect::to(invalid_password_uri).see_other();
         }
     };
-    let app = match state.database.app_by_client_id(client_id).await {
+    if !password::check_password(&user.password_hash, &request.password) {
+        info!("User entered invalid password");
+        return web::Redirect::to(invalid_password_uri);
+    }
+    let app = match state.database.app_by_name(&request.client_id).await {
         Some(a) => a,
         None => {
             warn!(
-                "Failed to find application for client id {}",
-                client_id.to_string()
+                "Failed to find application for app name {}",
+                &request.client_id
             );
             return web::Redirect::to(invalid_config_uri);
         }
     };
     if !app.redirect_uris.contains(&request.redirect_uri) {
-        warn!(
-            "Failed to find application for client id {}",
-            client_id.to_string()
-        );
-        return web::Redirect::to(invalid_config_uri);
+        warn!("Application redirect uri invalid");
+        return web::Redirect::to(invalid_config_uri).see_other();
     }
     // TODO: Support state parameter
     // TODO Make application grants expire
     let code = generate_random_code(128);
     let grant = types::DbApplicationGrant {
-        client_id,
+        client_id: app.id.unwrap(),
         code,
-        user_id: user.id,
+        user_id: user.id.unwrap(),
     };
     if let Err(e) = state.database.insert_application_grant(&grant).await {
         warn!("Failed to insert application grant: {}", e);
         return web::Redirect::to(invalid_config_uri);
     }
-    web::Redirect::to(format!("{}?code={}", &request.redirect_uri, &grant.code))
+    web::Redirect::to(format!("{}?code={}", &request.redirect_uri, &grant.code)).see_other()
 }
 
 fn generate_random_code(len: usize) -> String {
@@ -88,14 +82,8 @@ fn generate_random_code(len: usize) -> String {
     result.into_iter().collect::<String>()
 }
 
-fn error_hash_map(message: &str) -> HashMap<String, String> {
-    let mut result = HashMap::<String, String>::new();
-    result.insert("error".to_owned(), message.to_owned());
-    return result;
-}
-
 pub async fn token(
-    request: web::Query<types::TokenRequest>,
+    request: web::Form<types::TokenRequest>,
     state: web::Data<types::AppState>,
 ) -> HttpResponse {
     let grant = match state.database.get_application_grant(&request.code).await {
@@ -176,12 +164,14 @@ pub async fn user_info(req: HttpRequest, state: web::Data<types::AppState>) -> H
     let bearer = match auth_header.split(" ").collect::<Vec<&str>>()[..] {
         ["Bearer", x, ..] => x,
         _ => {
+            warn!("Invalid auth header");
             return HttpResponse::BadRequest().body("Invalid authorization header");
         }
     };
     let session = match state.database.session_from_key(bearer).await {
         Some(s) => s,
         None => {
+            warn!("Session not found");
             return HttpResponse::Unauthorized().body("Invalid session");
         }
     };

@@ -8,8 +8,17 @@
   </head>
   <body>
     <h1>Admin</h1>
-    <form method="POST" action="/admin/create_user">
-      
+    <form method="POST" action="/admin/user">
+      <h2>Create user</h2>
+      Username: <input type="text" name="username" /><br />
+      Password: <input type="password" name="password" /><br />
+      <input type="submit" value="Create user" />
+    </form>
+    <form method="POST" action="/admin/application">
+      <h2>Create application</h2>
+      Application name: <input type="text" name="app_name" /><br />
+      Redirect URIs (separated by commas): <input type="text" name="redirect_uris" /><br />
+      <input type="submit" value="Create application" />
     </form>
   </body>
 </html>
